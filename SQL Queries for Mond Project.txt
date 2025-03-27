@@ -1,0 +1,275 @@
+
+--I imported 4 Flat files (Products, Inventory, Sales, Warehouses) to a new database created on Name Mondelez.
+-- I have to add constraints in Inventory table since I didn't find any unique primary key for the table
+alter table Inventory
+add constraint PK_Inventory
+Primary key (Product_ID,Warehouse_ID)
+
+alter table Sales
+add constraint FK_Sales_Products
+foreign key (Product_ID) references Products(Product_ID)
+alter table Sales
+add constraint FK_Sales_Warehouses
+foreign key (Warehouse_ID) references Warehouses(Warehouse_ID)
+
+ALTER TABLE Inventory
+ADD CONSTRAINT FK_Inventory_Products
+FOREIGN KEY (Product_ID) REFERENCES Products(Product_ID);
+
+ALTER TABLE Inventory
+ADD CONSTRAINT FK_Inventory_Warehouses
+FOREIGN KEY (Warehouse_ID) REFERENCES Warehouses(Warehouse_ID);
+
+SELECT 
+    tc.TABLE_NAME, 
+    tc.CONSTRAINT_NAME, 
+    tc.CONSTRAINT_TYPE
+FROM 
+    INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+WHERE 
+    tc.TABLE_SCHEMA = 'dbo' AND
+    tc.TABLE_NAME IN ('Products', 'Warehouses', 'Inventory', 'Sales');
+
+
+--table is all set now we can move forward, lets start Exploratory Data Analysis with simple query:
+--Count of Products by category
+select Count(Product_Name) as Count, Product_Category from Products
+group by Product_Category
+order by Count desc
+
+
+-- Product count by category with average price
+SELECT 
+    Product_Category,
+    COUNT(*) AS Number_of_Products,
+    AVG(Price) AS Average_Price,
+    MIN(Price) AS Min_Price,
+    MAX(Price) AS Max_Price
+FROM Products
+GROUP BY Product_Category
+ORDER BY Number_of_Products DESC;
+
+-- Warehouse distribution by country and state
+SELECT 
+    Country,
+    State,
+    COUNT(*) AS Warehouse_Count
+FROM Warehouses
+GROUP BY Country, State
+ORDER BY Country, Warehouse_Count DESC;
+
+-- Products below reorder point (potential stockouts)
+SELECT 
+    p.Product_Name,
+    p.Product_Category,
+    w.Warehouse_Location,
+    w.Country,
+    i.Inventory_Level,
+    i.Reorder_Point,
+    (i.Inventory_Level - i.Reorder_Point) AS Inventory_Buffer
+FROM Inventory i
+JOIN Products p ON i.Product_ID = p.Product_ID
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+WHERE i.Inventory_Level < i.Reorder_Point
+ORDER BY Inventory_Buffer ASC;
+
+-- Complete inventory status for Fudgee Bar across all warehouses
+SELECT 
+    p.Product_Name,
+    p.Product_Category,
+    w.Warehouse_Location,
+    w.State,
+    w.Country,
+    i.Inventory_Level,
+    i.Reorder_Point,
+    (i.Inventory_Level - i.Reorder_Point) AS Inventory_Buffer,
+    i.Demand_Forecast
+FROM Inventory i
+JOIN Products p ON i.Product_ID = p.Product_ID
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+WHERE p.Product_Name = 'Fudgee Bar'
+ORDER BY Inventory_Buffer ASC;
+
+-- Recent sales of Fudgee Bar
+SELECT 
+    s.Sales_Date,
+    w.Warehouse_Location,
+    s.Sales_Amount,
+    p.Price,
+    (s.Sales_Amount / p.Price) AS Units_Sold
+FROM Sales s
+JOIN Products p ON s.Product_ID = p.Product_ID
+JOIN Warehouses w ON s.Warehouse_ID = w.Warehouse_ID
+WHERE p.Product_Name = 'Fudgee Bar'
+ORDER BY s.Sales_Date DESC;
+
+-- Current inventory vs. sales velocity for Fudgee Bar
+SELECT 
+    w.Warehouse_Location,
+    i.Inventory_Level,
+    i.Reorder_Point,
+    (i.Inventory_Level - i.Reorder_Point) AS Current_Buffer,
+    i.Demand_Forecast,
+    COUNT(s.Transaction_ID) AS Sales_Count_Last_90_Days,
+    SUM(s.Sales_Amount/p.Price) AS Units_Sold_Last_90_Days
+FROM Inventory i
+JOIN Products p ON i.Product_ID = p.Product_ID
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+LEFT JOIN Sales s ON p.Product_ID = s.Product_ID 
+    AND w.Warehouse_ID = s.Warehouse_ID
+    AND s.Sales_Date >= DATEADD(day, -90, GETDATE())
+WHERE p.Product_Name = 'Fudgee Bar'
+GROUP BY 
+    w.Warehouse_Location,
+    i.Inventory_Level,
+    i.Reorder_Point,
+    i.Demand_Forecast;
+
+-- Verify duplicate inventory entries for Fudgee Bar in Montreal
+SELECT *
+FROM Inventory i
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+JOIN Products p ON i.Product_ID = p.Product_ID
+WHERE p.Product_Name = 'Fudgee Bar'
+AND w.Warehouse_Location = 'Montreal';
+
+-- Monthly sales by product category
+SELECT 
+    FORMAT(s.Sales_Date, 'yyyy-MM') AS Month,
+    p.Product_Category,
+    COUNT(s.Transaction_ID) AS Transaction_Count,
+    SUM(s.Sales_Amount) AS Total_Sales,
+    AVG(s.Sales_Amount) AS Avg_Sale_Amount
+FROM Sales s
+JOIN Products p ON s.Product_ID = p.Product_ID
+GROUP BY FORMAT(s.Sales_Date, 'yyyy-MM'), p.Product_Category
+ORDER BY Month, Total_Sales DESC;
+
+-- Inventory status by warehouse location
+SELECT 
+    w.Warehouse_Location,
+    w.Country,
+    COUNT(CASE WHEN i.Inventory_Level < i.Reorder_Point THEN 1 END) AS Products_Below_Reorder,
+    COUNT(CASE WHEN i.Inventory_Level > i.Reorder_Point * 1.5 THEN 1 END) AS Overstocked_Products,
+    AVG(i.Inventory_Level - i.Reorder_Point) AS Avg_Inventory_Buffer
+FROM Inventory i
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+GROUP BY w.Warehouse_Location, w.Country
+ORDER BY Products_Below_Reorder DESC;
+
+-- Top performing products by sales and inventory turns
+SELECT 
+    p.Product_Name,
+    p.Product_Category,
+    COUNT(s.Transaction_ID) AS Sales_Count,
+    SUM(s.Sales_Amount) AS Total_Revenue,
+    AVG(i.Inventory_Level) AS Avg_Inventory,
+    CASE 
+        WHEN SUM(s.Sales_Amount) > 0 THEN SUM(s.Sales_Amount)/AVG(i.Inventory_Level) 
+        ELSE 0 
+    END AS Inventory_Turnover_Ratio
+FROM Products p
+LEFT JOIN Sales s ON p.Product_ID = s.Product_ID
+LEFT JOIN Inventory i ON p.Product_ID = i.Product_ID
+GROUP BY p.Product_Name, p.Product_Category
+ORDER BY Total_Revenue DESC;
+
+-- Sales by country and state
+SELECT 
+    w.Country,
+    w.State,
+    COUNT(s.Transaction_ID) AS Transaction_Count,
+    SUM(s.Sales_Amount) AS Total_Sales,
+    COUNT(DISTINCT s.Product_ID) AS Unique_Products_Sold
+FROM Sales s
+JOIN Warehouses w ON s.Warehouse_ID = w.Warehouse_ID
+GROUP BY w.Country, w.State
+ORDER BY Total_Sales DESC;
+
+CREATE VIEW vw_Monthly_Sales_By_Category AS
+-- [First query above]
+
+CREATE VIEW vw_Monthly_Sales_By_Category AS
+SELECT 
+    FORMAT(s.Sales_Date, 'yyyy-MM') AS Month,
+    p.Product_Category,
+    COUNT(s.Transaction_ID) AS Transaction_Count,
+    SUM(s.Sales_Amount) AS Total_Sales,
+    AVG(s.Sales_Amount) AS Avg_Sale_Amount
+FROM Sales s
+JOIN Products p ON s.Product_ID = p.Product_ID
+GROUP BY FORMAT(s.Sales_Date, 'yyyy-MM'), p.Product_Category;
+
+CREATE VIEW vw_Inventory_Health_By_Warehouse AS
+SELECT 
+    w.Warehouse_Location,
+    w.Country,
+    w.State,
+    COUNT(CASE WHEN i.Inventory_Level < i.Reorder_Point THEN 1 END) AS Products_Below_Reorder,
+    COUNT(CASE WHEN i.Inventory_Level > i.Reorder_Point * 1.5 THEN 1 END) AS Overstocked_Products,
+    AVG(i.Inventory_Level - i.Reorder_Point) AS Avg_Inventory_Buffer,
+    COUNT(i.Product_ID) AS Total_Products
+FROM Inventory i
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+GROUP BY w.Warehouse_Location, w.Country, w.State;
+
+CREATE VIEW vw_Product_Performance AS
+SELECT 
+    p.Product_ID,
+    p.Product_Name,
+    p.Product_Category,
+    p.Price,
+    COUNT(s.Transaction_ID) AS Sales_Count,
+    SUM(s.Sales_Amount) AS Total_Revenue,
+    AVG(i.Inventory_Level) AS Avg_Inventory,
+    CASE 
+        WHEN SUM(s.Sales_Amount) > 0 THEN SUM(s.Sales_Amount)/NULLIF(AVG(i.Inventory_Level), 0)
+        ELSE 0 
+    END AS Inventory_Turnover_Ratio
+FROM Products p
+LEFT JOIN Sales s ON p.Product_ID = s.Product_ID
+LEFT JOIN Inventory i ON p.Product_ID = i.Product_ID
+GROUP BY p.Product_ID, p.Product_Name, p.Product_Category, p.Price;
+
+CREATE VIEW vw_Geographic_Sales AS
+SELECT 
+    w.Warehouse_ID,
+    w.Warehouse_Location,
+    w.Country,
+    w.State,
+    COUNT(s.Transaction_ID) AS Transaction_Count,
+    SUM(s.Sales_Amount) AS Total_Sales,
+    COUNT(DISTINCT s.Product_ID) AS Unique_Products_Sold,
+    SUM(s.Sales_Amount) / NULLIF(COUNT(s.Transaction_ID), 0) AS Avg_Sale_Per_Transaction
+FROM Sales s
+JOIN Warehouses w ON s.Warehouse_ID = w.Warehouse_ID
+GROUP BY w.Warehouse_ID, w.Warehouse_Location, w.Country, w.State;
+
+CREATE VIEW vw_Inventory_Sales_Combined AS
+SELECT 
+    p.Product_ID,
+    p.Product_Name,
+    p.Product_Category,
+    w.Warehouse_ID,
+    w.Warehouse_Location,
+    i.Inventory_Level,
+    i.Reorder_Point,
+    i.Demand_Forecast,
+    (i.Inventory_Level - i.Reorder_Point) AS Inventory_Buffer,
+    COUNT(s.Transaction_ID) AS Sales_Count_90_Days,
+    SUM(s.Sales_Amount) AS Total_Sales_90_Days
+FROM Inventory i
+JOIN Products p ON i.Product_ID = p.Product_ID
+JOIN Warehouses w ON i.Warehouse_ID = w.Warehouse_ID
+LEFT JOIN Sales s ON i.Product_ID = s.Product_ID 
+    AND i.Warehouse_ID = s.Warehouse_ID
+    AND s.Sales_Date >= DATEADD(day, -90, GETDATE())
+GROUP BY 
+    p.Product_ID,
+    p.Product_Name,
+    p.Product_Category,
+    w.Warehouse_ID,
+    w.Warehouse_Location,
+    i.Inventory_Level,
+    i.Reorder_Point,
+    i.Demand_Forecast;
