@@ -38,19 +38,6 @@ This project focuses on conducting a comprehensive Sales and Inventory Analysis 
 - **Geographic Sales Distribution Visualization**: Analyzes regional sales performance.
   - Map Visualization: Shows sales by geographic regions.
 
-## Screenshots
-1. **Sales Performance Dashboard**
-   *(Screenshot showcasing sales by month, stacked column chart, and KPI cards)*
-
-2. **Inventory Health Dashboard**
-   ![Inventory Health Dashboard](Inventory%20Health%20Dashboard.png)
-
-3. **Product Performance Matrix Visualization**
-   ![Product Performance Matrix Visualization](Product%20Performance%20Matrix%20Visualization.png)
-
-4. **Geographic Sales Distribution Visualization**
-   ![Geographic Sales Distribution Visualization](Geographic%20Sales%20Distribution%20Visualization.png)
-
 ## Project Files
 - `Sales and Inventory Analysis.pbix`: Power BI file containing all dashboards and reports.
 - `SQL Queries for Mond Project.txt`: SQL queries used for table creation, data import, and analysis.
