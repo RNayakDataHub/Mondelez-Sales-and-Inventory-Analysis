@@ -7,7 +7,6 @@ This project focuses on conducting a comprehensive Sales and Inventory Analysis 
 ## Tools and Technologies Used
 - **SQL Server**: For data storage, querying, and importing CSV files.
 - **Power BI**: To create dashboards for data visualization and performance tracking.
-- **Excel**: For data summarization and validation using Pivot Tables.
 
 ## Key Tasks and Features
 
